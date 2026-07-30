@@ -79,6 +79,16 @@ async function connect() {
     generateHighQualityLinkPreview: true,
     syncFullHistory:                false,
     keepAliveIntervalMs:            30_000,
+    retryRequestDelayMs:            350,
+    // Required so Baileys can retry decryption of group messages whose
+    // senderKey session was not yet established (Bad MAC / @lid participants)
+    getMessage: async (key) => {
+      if (global.msgCache) {
+        const cached = global.msgCache.get(key.id);
+        if (cached?.message) return cached.message;
+      }
+      return { conversation: '' };
+    },
   });
 
   sock.ev.on('creds.update', saveCreds);
@@ -140,6 +150,21 @@ async function connect() {
       }
       try { await handleMessage(sock, msg); }
       catch (err) { logger.error(`Message handler error: ${err.message}\n${err.stack}`); }
+    }
+  });
+
+  // ─── Retry handler: re-processes messages after senderKey is established ──
+  // This fires when Baileys retries a message that previously failed to decrypt
+  // (Bad MAC / @lid group participants). Without this, retried messages are lost.
+  sock.ev.on('messages.update', async (updates) => {
+    for (const { key, update } of updates) {
+      if (update.message) {
+        // Build a minimal message object and route it through handleMessage
+        try {
+          const retryMsg = { key, message: update.message };
+          await handleMessage(sock, retryMsg);
+        } catch {}
+      }
     }
   });
 
