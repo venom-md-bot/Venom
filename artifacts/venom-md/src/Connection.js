@@ -117,16 +117,29 @@ async function connect() {
 
   // ─── Messages ────────────────────────────────────────────────────────────
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    logger.info(`[UPSERT] type=${type} count=${messages.length}`);
     if (type !== 'notify') return;
     for (const msg of messages) {
-      if (!msg.message) continue;
-      const msgTypes = Object.keys(msg.message);
-      const isProtocol = msgTypes.every(k =>
+      const from = msg.key?.remoteJid || '?';
+      const isGroup = from.endsWith('@g.us');
+      const participant = msg.key?.participant || '(no participant)';
+      const fromMe = msg.key?.fromMe;
+      const msgKeys = Object.keys(msg.message || {});
+      logger.info(`[MSG] from=${from} group=${isGroup} fromMe=${fromMe} participant=${participant} keys=${msgKeys.join(',')}`);
+
+      if (!msg.message) {
+        logger.info(`[SKIP] no msg.message`);
+        continue;
+      }
+      const isProtocol = msgKeys.every(k =>
         ['messageContextInfo','senderKeyDistributionMessage','protocolMessage'].includes(k)
       );
-      if (isProtocol) continue;
+      if (isProtocol) {
+        logger.info(`[SKIP] protocol message`);
+        continue;
+      }
       try { await handleMessage(sock, msg); }
-      catch (err) { logger.error(`Message handler error: ${err.message}`); }
+      catch (err) { logger.error(`Message handler error: ${err.message}\n${err.stack}`); }
     }
   });
 

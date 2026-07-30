@@ -42,19 +42,25 @@ async function handleMessage(sock, rawMsg) {
     return;
   }
 
-  if (!msg || !msg.message) return;
+  if (!msg || !msg.message) {
+    logger.info(`[EH] DROP: serialize returned empty`);
+    return;
+  }
 
   // Cache for anti-delete
   cacheMessage(rawMsg);
 
-  // Allow owner to send commands from their own device (fromMe = true).
-  // Block other fromMe messages (bot's own replies) so they don't loop.
-  if (msg.key.fromMe && !msg.isCmd) return;
-
   const { from, sender, isGroup, isCmd, command, body } = msg;
   const senderJid = cleanJid(sender);
 
-  logger.debug(`MSG from=${from} sender=${senderJid} body=${JSON.stringify(body)} isCmd=${isCmd} cmd=${command}`);
+  logger.info(`[EH] from=${from} group=${isGroup} sender=${senderJid} body=${JSON.stringify(body)} isCmd=${isCmd} cmd=${command}`);
+
+  // Allow owner to send commands from their own device (fromMe = true).
+  // Block other fromMe messages (bot's own replies) so they don't loop.
+  if (msg.key.fromMe && !msg.isCmd) {
+    logger.info(`[EH] DROP: fromMe non-command`);
+    return;
+  }
 
   // ─── Auto-read ─────────────────────────────────────────────────────────────
   try {
@@ -65,7 +71,10 @@ async function handleMessage(sock, rawMsg) {
 
   // ─── Ban check ─────────────────────────────────────────────────────────────
   try {
-    if (Settings.isBanned(senderJid) && !isAnyOwner(senderJid)) return;
+    if (Settings.isBanned(senderJid) && !isAnyOwner(senderJid)) {
+      logger.info(`[EH] DROP: banned user ${senderJid}`);
+      return;
+    }
   } catch (err) {
     logger.warn(`Ban-check failed: ${err.message}`);
   }
@@ -159,7 +168,10 @@ async function handleMessage(sock, rawMsg) {
   }
 
   // ─── Command gate ──────────────────────────────────────────────────────────
-  if (!isCmd) return;
+  if (!isCmd) {
+    logger.info(`[EH] DROP: not a command (body does not start with prefix '${config.prefix}')`);
+    return;
+  }
 
   // ─── Mode check ────────────────────────────────────────────────────────────
   let mode = 'public';
@@ -170,9 +182,11 @@ async function handleMessage(sock, rawMsg) {
   // 'self' is an alias for 'private' — only owner can use commands
   const isPrivateMode = mode === 'private' || mode === 'self';
 
+  logger.info(`[EH] mode=${mode} isPrivateMode=${isPrivateMode} isAnyOwner=${isAnyOwner(senderJid)}`);
+
   if (isPrivateMode && !isAnyOwner(senderJid)) {
     // In groups: silently drop — don't spam the group with restriction messages
-    if (isGroup) return;
+    if (isGroup) { logger.info(`[EH] DROP: private mode, group silent drop`); return; }
     return sock.sendMessage(from, {
       text: `🔒 *Bot is in private mode.*\n_Only the owner can use commands._`,
     }, { quoted: rawMsg });
@@ -191,7 +205,7 @@ async function handleMessage(sock, rawMsg) {
   // ─── Command lookup ────────────────────────────────────────────────────────
   const cmd = getCommand(command);
   if (!cmd) {
-    logger.debug(`Unknown command: ${command}`);
+    logger.info(`[EH] DROP: unknown command '${command}'`);
     return;
   }
 
