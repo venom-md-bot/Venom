@@ -223,13 +223,19 @@
   <!-- Step 3 — Session ready -->
   <div class="section" id="section-3">
     <div class="success-badge">✅ Session Generated!</div>
+
+    <div style="background:rgba(255,200,0,0.08);border:1px solid rgba(255,200,0,0.25);border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:0.82rem;color:#ffcc00;line-height:1.5">
+      ⚠️ <strong>Copy from THIS page</strong> using the button below.<br>
+      Do <u>not</u> copy from WhatsApp — the message may be broken across lines and will fail on Render.
+    </div>
+
     <div class="session-box">
       <div class="session-id" id="session-id-text"></div>
     </div>
-    <button class="copy-btn" id="copy-btn" onclick="copySession()">Copy Session ID</button>
+    <button class="copy-btn" id="copy-btn" onclick="copySession()">📋 Copy Session ID</button>
 
     <div class="env-block" style="margin-top:16px">
-      <h4>Add to your .env file</h4>
+      <h4>➡ Add these to Render → Environment</h4>
       <div class="env-line">
         <span class="env-key">SESSION_ID=</span>
         <span class="env-val" id="env-session">VENOM_...</span>
@@ -240,7 +246,16 @@
       </div>
     </div>
 
-    <p style="color:#555;font-size:0.8rem;text-align:center">⚠️ Keep your session ID secret — never share it!</p>
+    <div style="background:#0d0d0d;border:1px solid #1e1e1e;border-radius:10px;padding:12px 14px;font-size:0.8rem;color:#666;line-height:1.7">
+      <strong style="color:#888">Next steps:</strong><br>
+      1. Click <strong style="color:#fff">Copy Session ID</strong> above<br>
+      2. Go to Render → your service → <strong style="color:#fff">Environment</strong><br>
+      3. Add <code style="color:#ffcc00">SESSION_ID</code> and <code style="color:#ffcc00">OWNER_NUMBER</code><br>
+      4. Click <strong style="color:#fff">Save Changes</strong> — Render will redeploy automatically<br>
+      5. Bot sends you a WhatsApp message when it's live ✅
+    </div>
+
+    <p style="color:#444;font-size:0.75rem;text-align:center;margin-top:10px">🔒 Keep your session ID secret — never share it</p>
   </div>
 </div>
 

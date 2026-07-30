@@ -113,7 +113,9 @@ function startPairingServer() {
               }
 
               const credsJson  = fs.readFileSync(credsPath, 'utf8');
-              const sessionId  = 'VENOM_' + Buffer.from(credsJson).toString('base64');
+              // Use base64url (no +, /, = chars) so the string never breaks
+              // when copied from WhatsApp or pasted into Render env vars.
+              const sessionId  = 'VENOM_' + Buffer.from(credsJson).toString('base64url');
 
               logger.info(`✅ Session ID generated for ${raw}`);
 

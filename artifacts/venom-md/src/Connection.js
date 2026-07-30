@@ -19,8 +19,13 @@ function isShortCode(id) {
   return id && id.startsWith('VENOM_') && id.length === 14;
 }
 
-async function restoreSessionFromId(sessionId, sessionDir) {
-  if (!sessionId) return false;
+async function restoreSessionFromId(rawSessionId, sessionDir) {
+  if (!rawSessionId) return false;
+
+  // Strip any accidental whitespace / newlines that can sneak in when
+  // copying from WhatsApp or pasting into Render's env var form.
+  const sessionId = rawSessionId.replace(/\s+/g, '');
+
   try {
     let credsJson;
     if (isShortCode(sessionId)) {
@@ -36,19 +41,30 @@ async function restoreSessionFromId(sessionId, sessionDir) {
       }
       credsJson = raw;
     } else if (sessionId.startsWith('VENOM_')) {
-      logger.info('🔑 Legacy base64 SESSION_ID detected');
-      credsJson = Buffer.from(sessionId.slice(6), 'base64').toString('utf8');
+      const encoded = sessionId.slice(6);
+      // Try base64url first (new format — no +/= special chars, safer to copy).
+      // Fall back to standard base64 for sessions generated before this fix.
+      let decoded;
+      try {
+        decoded = Buffer.from(encoded, 'base64url').toString('utf8');
+        JSON.parse(decoded); // validate — throws if base64url gave garbage
+      } catch {
+        logger.info('🔑 base64url decode failed, trying standard base64 (legacy session)');
+        decoded = Buffer.from(encoded, 'base64').toString('utf8');
+        JSON.parse(decoded); // throws if this also fails → caught below
+      }
+      credsJson = decoded;
+      logger.info('🔑 SESSION_ID decoded OK');
     } else {
-      logger.error('❌ SESSION_ID format not recognised.');
+      logger.error('❌ SESSION_ID format not recognised. It must start with VENOM_');
       return false;
     }
-    JSON.parse(credsJson);
     fs.ensureDirSync(sessionDir);
     fs.writeFileSync(path.join(sessionDir, 'creds.json'), credsJson);
     logger.info('✅ Session restored from SESSION_ID');
     return true;
   } catch (err) {
-    logger.error(`Failed to restore session: ${err.message}`);
+    logger.error(`Failed to restore session: ${err.message} — SESSION_ID may be corrupted or truncated. Re-pair at /pair to get a fresh one.`);
     return false;
   }
 }
