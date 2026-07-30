@@ -1,14 +1,14 @@
 require('dotenv').config();
 
-// If OWNER_NUMBER isn't set in env, fall back to the hardcoded super-owner
-// so that isOwner() / isAnyOwner() always work for the bot owner.
-const SUPER_OWNER = '2348021016309';
+// ─── Required env vars ─────────────────────────────────────────────────────
+// The bot will start the pairing server without OWNER_NUMBER/SESSION_ID
+// so the user can pair first. Once paired, set those vars and restart.
 
 const config = {
-  // ─── Identity ───────────────────────────────────────────────────────────────
-  botName:      'Venom MD',
-  ownerNumber:  process.env.OWNER_NUMBER || SUPER_OWNER,
-  prefix:       '.',
+  // ─── Identity (only botName is hardcoded — everything else is env) ─────────
+  botName:      process.env.BOT_NAME     || 'Venom MD',
+  ownerNumber:  process.env.OWNER_NUMBER || '',          // set on Render
+  prefix:       process.env.PREFIX       || '.',
   sessionName:  'venom_session',
 
   // ─── API Keys ───────────────────────────────────────────────────────────────
@@ -22,9 +22,6 @@ const config = {
   antiCall:     process.env.ANTI_CALL  === 'true',
   port:         parseInt(process.env.PORT) || 3000,
   logLevel:     process.env.LOG_LEVEL  || 'info',
-
-  // ─── Super Owner (always has owner-level access regardless of OWNER_NUMBER) ──
-  superOwnerNumber: SUPER_OWNER,
 
   // ─── Version ────────────────────────────────────────────────────────────────
   version:      '2.0.0',
@@ -57,7 +54,8 @@ const config = {
   thumbnail: './assets/thumbnail.jpg',
 };
 
-config.ownerJid      = `${config.ownerNumber}@s.whatsapp.net`;
-config.superOwnerJid = `${config.superOwnerNumber}@s.whatsapp.net`;
+// Build JIDs only when OWNER_NUMBER is actually set
+config.ownerJid      = config.ownerNumber ? `${config.ownerNumber}@s.whatsapp.net` : '';
+config.superOwnerJid = config.ownerJid;
 
 module.exports = config;

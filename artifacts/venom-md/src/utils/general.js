@@ -41,15 +41,19 @@ function getNumber(jid) {
 }
 
 function isOwner(jid) {
+  // ownerJid is empty string when OWNER_NUMBER isn't set yet (pre-pairing).
+  // Return false in that case so no one accidentally gets owner access.
+  if (!config.ownerJid) return false;
   return cleanJid(jid) === config.ownerJid;
 }
 
 function isSuperOwner(jid) {
-  return cleanJid(jid) === config.superOwnerJid;
+  // superOwnerJid is now the same as ownerJid — no hardcoded number.
+  return isOwner(jid);
 }
 
 function isAnyOwner(jid) {
-  return isSuperOwner(jid) || isOwner(jid);
+  return isOwner(jid);
 }
 
 function isUrl(str) {
