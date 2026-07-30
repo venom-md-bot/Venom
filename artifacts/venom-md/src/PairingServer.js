@@ -59,6 +59,11 @@ function startPairingServer() {
       let connected = false;
       let dead      = false;
 
+      // Always wipe the session dir at the start of a fresh pairing attempt so
+      // stale credentials from a previous failed attempt never interfere.
+      cleanup(sessionDir);
+      fs.ensureDirSync(sessionDir);
+
       async function createPairSocket() {
         if (dead) return;
 
@@ -73,13 +78,19 @@ function startPairingServer() {
               creds: state.creds,
               keys:  makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
             },
-            browser:           Browsers.ubuntu('Chrome'),
-            printQRInTerminal: false,
+            browser:            Browsers.ubuntu('Chrome'),
+            printQRInTerminal:  false,
+            // Keep the connection alive while the user is typing the code on
+            // their phone — without this, Render's idle timeout can drop the
+            // socket in the middle of the handshake → "couldn't link device".
+            keepAliveIntervalMs: 15_000,
           });
 
           pairSock.ev.on('creds.update', saveCreds);
 
           if (!codeSent && !pairSock.authState.creds.registered) {
+            // Use 5 s on first attempt (Render cold-start can be slow).
+            // Bail immediately if dead or already sent on a previous socket.
             setTimeout(async () => {
               if (dead || codeSent) return;
               codeSent = true;
@@ -93,7 +104,7 @@ function startPairingServer() {
                 dead = true;
                 cleanup(sessionDir);
               }
-            }, 3000);
+            }, 5000);
           }
 
           pairSock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
@@ -112,47 +123,58 @@ function startPairingServer() {
                 return;
               }
 
-              const credsJson  = fs.readFileSync(credsPath, 'utf8');
-              // Use base64url (no +, /, = chars) so the string never breaks
-              // when copied from WhatsApp or pasted into Render env vars.
-              const sessionId  = 'VENOM_' + Buffer.from(credsJson).toString('base64url');
+              const credsJson = fs.readFileSync(credsPath, 'utf8');
+              // base64url: no +/=/  chars — safe to copy from web UI and paste
+              // into Render env vars without corruption.
+              const sessionId = 'VENOM_' + Buffer.from(credsJson).toString('base64url');
 
               logger.info(`✅ Session ID generated for ${raw}`);
 
-              // ── Send raw Session ID to user's WhatsApp ────────────────────────
-              // Send ONLY the raw VENOM_eyJ... string — no formatting, no extra
-              // text — so the user can tap once to copy the whole string.
+              // Send to WhatsApp as a backup — user should still use the web UI
+              // copy button, but this gives them a second copy just in case.
               try {
                 const jid = `${raw}@s.whatsapp.net`;
-                await pairSock.sendMessage(jid, { text: sessionId });
-                socket.emit('session-ready', {
-                  sessionId,
-                  instructions: `✅ Session ID sent to your WhatsApp! Set SESSION_ID to that value on Render.`,
+                await pairSock.sendMessage(jid, {
+                  text: `Your Venom MD Session ID:\n\n${sessionId}\n\n⚠️ Copy it from the pairing page, NOT from here.`,
                 });
               } catch (sendErr) {
-                logger.error(`Could not DM session ID: ${sendErr.message}`);
-                // Fallback: show on web UI
-                socket.emit('session-ready', {
-                  sessionId,
-                  instructions: `Copy this Session ID and set SESSION_ID on Render.`,
-                });
+                logger.warn(`Could not DM session ID: ${sendErr.message}`);
               }
 
+              socket.emit('session-ready', { sessionId });
+
               dead = true;
-              setTimeout(() => cleanup(sessionDir), 30000);
+              setTimeout(() => cleanup(sessionDir), 60_000);
               try { pairSock.end(); } catch {}
             }
 
             if (connection === 'close') {
               const statusCode = lastDisconnect?.error?.output?.statusCode;
-              if (statusCode === DisconnectReason.loggedOut || connected) {
+
+              // ── KEY FIX ──────────────────────────────────────────────────────
+              // Once the code has been sent (user is entering it on their phone)
+              // or once we've successfully connected, NEVER reconnect.
+              // Reconnecting creates a brand-new session — WhatsApp is still
+              // trying to handshake with the OLD session → "couldn't link device".
+              if (codeSent || connected) {
                 if (!connected) {
-                  socket.emit('error', { message: 'WhatsApp rejected the link. Make sure you entered the code in time.' });
+                  socket.emit('error', {
+                    message: 'Connection dropped while waiting for code entry. Please refresh and try again.',
+                  });
                   dead = true;
                   cleanup(sessionDir);
                 }
+                return;
+              }
+
+              // Only reconnect if we haven't shown the code yet (pre-code
+              // network blip on Render cold start, for example).
+              if (statusCode === DisconnectReason.loggedOut) {
+                socket.emit('error', { message: 'WhatsApp rejected the connection. Try again.' });
+                dead = true;
+                cleanup(sessionDir);
               } else {
-                logger.info(`Pairing socket closed (code ${statusCode}), reconnecting…`);
+                logger.info(`Pairing socket closed (code ${statusCode}) before code was sent — reconnecting…`);
                 setTimeout(createPairSocket, 2000);
               }
             }
