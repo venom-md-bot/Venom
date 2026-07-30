@@ -1,0 +1,8 @@
+node_modules/
+venom_session/
+sessions/
+database/*.json
+!database/*.default.json
+session_id.txt
+.env
+*.log

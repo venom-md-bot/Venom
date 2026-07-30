@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Venom MD — Get Session ID</title>
+  <!-- CDN avoids absolute-path routing issues behind any proxy -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      color: #fff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    body::before {
+      content: '🐍';
+      position: fixed;
+      font-size: 400px;
+      opacity: 0.03;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .card {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 20px;
+      padding: 40px;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 0 60px rgba(180, 0, 0, 0.15);
+    }
+
+    .logo { text-align: center; margin-bottom: 30px; }
+    .logo h1 {
+      font-size: 2.2rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, #cc0000, #ff4444, #ff0000);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -1px;
+    }
+    .logo p { color: #555; font-size: 0.85rem; margin-top: 4px; }
+    .badge {
+      display: inline-block;
+      background: rgba(180,0,0,0.15);
+      border: 1px solid rgba(180,0,0,0.3);
+      color: #ff4444;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-top: 8px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .steps { display: flex; gap: 8px; margin-bottom: 28px; }
+    .step { flex: 1; height: 3px; background: #1e1e1e; border-radius: 2px; transition: background 0.4s; }
+    .step.active { background: #cc0000; }
+    .step.done   { background: #444; }
+
+    label {
+      display: block; color: #888; font-size: 0.8rem;
+      font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 8px;
+    }
+
+    .input-wrap { position: relative; margin-bottom: 20px; }
+    .input-wrap .flag { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; }
+
+    input[type="text"] {
+      width: 100%;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      color: #fff;
+      font-size: 1.05rem;
+      padding: 14px 14px 14px 44px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input[type="text"]:focus { border-color: #cc0000; box-shadow: 0 0 0 3px rgba(180,0,0,0.15); }
+    input[type="text"]::placeholder { color: #333; }
+
+    .btn {
+      width: 100%; padding: 15px;
+      background: linear-gradient(135deg, #cc0000, #ff2222);
+      color: #fff; font-size: 1rem; font-weight: 700;
+      border: none; border-radius: 12px; cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    .btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .section { display: none; }
+    .section.visible { display: block; }
+
+    /* Step 2 — pairing code */
+    .code-box {
+      background: #0d0d0d;
+      border: 1px solid #222;
+      border-radius: 14px;
+      padding: 28px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .pairing-code {
+      font-size: 2.8rem;
+      font-weight: 900;
+      letter-spacing: 10px;
+      color: #ff4444;
+      font-family: 'Courier New', monospace;
+    }
+    .code-box p { color: #555; font-size: 0.8rem; margin-top: 10px; }
+
+    .steps-list { list-style: none; margin-bottom: 20px; }
+    .steps-list li { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; color: #888; font-size: 0.9rem; }
+    .steps-list li span.num { background: #cc0000; color: #fff; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; flex-shrink: 0; }
+
+    .status-bar { background: #111; border: 1px solid #1e1e1e; border-radius: 10px; padding: 12px 16px; color: #888; font-size: 0.85rem; margin-bottom: 20px; }
+
+    /* Step 3 — session ID */
+    .session-box {
+      background: #0d0d0d; border: 1px solid #1a1a1a;
+      border-radius: 14px; padding: 20px; margin-bottom: 16px;
+      position: relative;
+    }
+    .session-id {
+      font-family: 'Courier New', monospace; font-size: 0.75rem;
+      color: #ffcc00; word-break: break-all; line-height: 1.5;
+      max-height: 120px; overflow-y: auto;
+    }
+    .copy-btn {
+      width: 100%; margin-top: 12px; padding: 12px;
+      background: #1a1a1a; color: #fff; border: 1px solid #2a2a2a;
+      border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.9rem;
+      transition: background 0.2s;
+    }
+    .copy-btn:hover { background: #252525; }
+    .copy-btn.copied { background: rgba(0, 180, 0, 0.15); color: #4caf50; border-color: rgba(0, 180, 0, 0.3); }
+
+    .env-block {
+      background: #0d0d0d; border: 1px solid #1e1e1e;
+      border-radius: 12px; padding: 16px; margin-bottom: 16px;
+    }
+    .env-block h4 { color: #666; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+    .env-line { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .env-key { color: #888; font-family: monospace; font-size: 0.8rem; }
+    .env-val { color: #ffcc00; font-family: monospace; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+
+    .error-box {
+      background: rgba(180,0,0,0.1); border: 1px solid rgba(180,0,0,0.3);
+      border-radius: 10px; padding: 12px 16px; color: #ff4444;
+      font-size: 0.85rem; margin-bottom: 16px; display: none;
+    }
+    .error-box.visible { display: block; }
+
+    .success-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(0,180,0,0.1); border: 1px solid rgba(0,180,0,0.3);
+      color: #4caf50; border-radius: 8px; padding: 8px 14px;
+      font-size: 0.85rem; font-weight: 600; margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>🐍 Venom MD</h1>
+    <p>The #1 WhatsApp Multi-Device Bot</p>
+    <span class="badge">Session ID Generator</span>
+  </div>
+
+  <!-- Progress steps -->
+  <div class="steps">
+    <div class="step active" id="step-bar-1"></div>
+    <div class="step" id="step-bar-2"></div>
+    <div class="step" id="step-bar-3"></div>
+  </div>
+
+  <!-- Error box -->
+  <div class="error-box" id="error-box"></div>
+
+  <!-- Step 1 — Enter number -->
+  <div class="section visible" id="section-1">
+    <label>Your WhatsApp Number</label>
+    <div class="input-wrap">
+      <span class="flag">📱</span>
+      <input type="text" id="phone-input" placeholder="2348021016309 (no + or spaces)" autocomplete="off" />
+    </div>
+    <button class="btn" id="btn-pair" onclick="requestPair()">Get Pairing Code →</button>
+  </div>
+
+  <!-- Step 2 — Show pairing code -->
+  <div class="section" id="section-2">
+    <div class="code-box">
+      <div class="pairing-code" id="pairing-code">----</div>
+      <p>Enter this code in WhatsApp</p>
+    </div>
+    <ul class="steps-list">
+      <li><span class="num">1</span>Open WhatsApp on your phone</li>
+      <li><span class="num">2</span>Go to <strong>Settings → Linked Devices</strong></li>
+      <li><span class="num">3</span>Tap <strong>Link a Device</strong></li>
+      <li><span class="num">4</span>Tap <strong>"Link with phone number instead"</strong></li>
+      <li><span class="num">5</span>Enter the code above</li>
+    </ul>
+    <div class="status-bar" id="status-text">Waiting for you to enter the code...</div>
+  </div>
+
+  <!-- Step 3 — Session ready -->
+  <div class="section" id="section-3">
+    <div class="success-badge">✅ Session Generated!</div>
+    <div class="session-box">
+      <div class="session-id" id="session-id-text"></div>
+    </div>
+    <button class="copy-btn" id="copy-btn" onclick="copySession()">Copy Session ID</button>
+
+    <div class="env-block" style="margin-top:16px">
+      <h4>Add to your .env file</h4>
+      <div class="env-line">
+        <span class="env-key">SESSION_ID=</span>
+        <span class="env-val" id="env-session">VENOM_...</span>
+      </div>
+      <div class="env-line">
+        <span class="env-key">OWNER_NUMBER=</span>
+        <span class="env-val" id="env-owner"></span>
+      </div>
+    </div>
+
+    <p style="color:#555;font-size:0.8rem;text-align:center">⚠️ Keep your session ID secret — never share it!</p>
+  </div>
+</div>
+
+<script>
+  // Build the correct socket.io path relative to wherever this page is served.
+  // e.g. page at /venom-md-bot/ → path = /venom-md-bot/socket.io
+  //      page at /              → path = /socket.io   (default)
+  const _base = window.location.pathname.replace(/\/?$/, '/');
+  const socket = io(window.location.origin, {
+    path: _base + 'socket.io',
+    transports: ['polling', 'websocket'],
+    reconnectionAttempts: 5,
+    reconnectionDelay: 2000,
+  });
+  let phoneNumber = '';
+
+  function setStep(n) {
+    [1, 2, 3].forEach(i => {
+      document.getElementById(`section-${i}`).classList.toggle('visible', i === n);
+      const bar = document.getElementById(`step-bar-${i}`);
+      bar.className = 'step';
+      if (i < n)  bar.classList.add('done');
+      if (i === n) bar.classList.add('active');
+    });
+  }
+
+  function showError(msg) {
+    const box = document.getElementById('error-box');
+    box.textContent = '❌ ' + msg;
+    box.classList.add('visible');
+    setTimeout(() => box.classList.remove('visible'), 6000);
+  }
+
+  function requestPair() {
+    document.getElementById('error-box').classList.remove('visible');
+    const raw = document.getElementById('phone-input').value.trim().replace(/[^0-9]/g, '');
+    if (!raw || raw.length < 7) return showError('Please enter a valid phone number with country code.');
+    phoneNumber = raw;
+
+    document.getElementById('btn-pair').disabled = true;
+    document.getElementById('btn-pair').textContent = 'Connecting…';
+    socket.emit('request-pair', { number: phoneNumber });
+  }
+
+  document.getElementById('phone-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') requestPair();
+  });
+
+  socket.on('pairing-code', ({ code }) => {
+    document.getElementById('pairing-code').textContent = code;
+    document.getElementById('env-owner').textContent = phoneNumber;
+    setStep(2);
+  });
+
+  socket.on('status', ({ message }) => {
+    const el = document.getElementById('status-text');
+    if (el) el.textContent = message;
+  });
+
+  socket.on('session-ready', ({ sessionId }) => {
+    document.getElementById('session-id-text').textContent = sessionId;
+    document.getElementById('env-session').textContent = sessionId.slice(0, 30) + '…';
+    setStep(3);
+  });
+
+  socket.on('error', ({ message }) => {
+    document.getElementById('btn-pair').disabled = false;
+    document.getElementById('btn-pair').textContent = 'Get Pairing Code →';
+    showError(message);
+    setStep(1);
+  });
+
+  function copySession() {
+    const text = document.getElementById('session-id-text').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = '✅ Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy Session ID'; btn.classList.remove('copied'); }, 2500);
+    });
+  }
+</script>
+</body>
+</html>
