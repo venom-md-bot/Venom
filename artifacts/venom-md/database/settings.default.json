@@ -1,0 +1,9 @@
+{
+  "global": {
+    "mode": "public",
+    "anticall": false,
+    "autoread": false,
+    "banned_users": []
+  },
+  "groups": {}
+}
